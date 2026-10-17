@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://scamshield-yj85.onrender.com/:path*"
+      "destination": "https://scamshield-v2.onrender.com/:path*"
     },
     {
       "source": "/(.*)",

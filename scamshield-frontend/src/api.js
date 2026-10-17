@@ -2,7 +2,7 @@ import axios from 'axios'
 
 const rawBaseUrl =
   import.meta.env.VITE_API_URL ||
-  (import.meta.env.PROD ? 'https://scamshield-yj85.onrender.com' : '/api')
+  (import.meta.env.PROD ? 'https://scamshield-v2.onrender.com' : '/api')
 
 const baseURL = rawBaseUrl.endsWith('/') ? rawBaseUrl.slice(0, -1) : rawBaseUrl
 
