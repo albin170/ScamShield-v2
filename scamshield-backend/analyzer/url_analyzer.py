@@ -249,14 +249,13 @@ def analyze_url(url: str) -> URLAnalysisResult:
             "Query parameters like '?url=' or '?redirect=' may chain you through to a different, possibly malicious, destination."
         ))
 
-    # ── 9b. Advanced Heuristics (Typosquatting, Homoglyphs, Shorteners) ──────
-    shortener_sig = check_url_shortener(hostname)
-    if shortener_sig:
+    shortener_sigs = check_url_shortener(hostname)
+    for sig in shortener_sigs:
         score += 15
         evidence.append(URLEvidence(
-            shortener_sig.check,
-            shortener_sig.severity,
-            shortener_sig.explanation,
+            sig.check,
+            sig.severity,
+            sig.explanation,
         ))
 
     homograph_sigs = check_homograph(hostname)

@@ -8,8 +8,8 @@ const SAMPLE_SAFE_URL = 'https://www.github.com/openai/whisper'
 const SAMPLE_SCAM_MSG = `URGENT: Your SBI account has been BLOCKED due to unusual activity. Verify your Aadhaar number and OTP immediately at http://sbi-verify.tk/login or your account will be permanently suspended within 24 hours. Do not ignore this message.`
 const SAMPLE_LEGIT_MSG = `Hi! Your Amazon order #112-3456789 for "Wireless Headphones" has been shipped. Expected delivery: Thursday. Track your order at amazon.com/orders.`
 
-export default function ScanPage() {
-  const [tab, setTab] = useState('url')
+export default function ScanPage({ defaultTab = 'url' }) {
+  const [tab, setTab] = useState(defaultTab)
   const [urlInput, setUrlInput] = useState('')
   const [msgInput, setMsgInput] = useState('')
   const [loading, setLoading] = useState(false)

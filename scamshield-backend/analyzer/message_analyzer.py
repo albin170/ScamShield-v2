@@ -36,6 +36,8 @@ FINANCIAL_BAIT_PATTERNS = [
     (r"\bmillion(s)?\b", "Large-sum claim"),
     (r"\bunclaimed\b", "Unclaimed funds lure"),
     (r"\brefund\b", "False refund offer"),
+    (r"\blottery\b", "Lottery claim"),
+    (r"\b(lakh|crore|crores)\b", "High-value currency lure"),
 ]
 
 CREDENTIAL_HARVEST_PATTERNS = [
@@ -61,6 +63,7 @@ IMPERSONATION_PATTERNS = [
     (r"\bAmazon\b.{0,30}(order|account|suspended)", "Amazon impersonation"),
     (r"\b(Netflix|Spotify)\b.{0,30}(payment|renew|suspend)", "Streaming service impersonation"),
     (r"\byour bank\b|\bbank alert\b|\bbank account\b.{0,20}(suspend|block|lock)", "Bank impersonation"),
+    (r"\b(KBC|Kaun Banega Crorepati)\b", "KBC lottery impersonation"),
     (r"\bCustomer (Care|Service|Support)\b", "Fake customer support claim"),
 ]
 
@@ -167,7 +170,7 @@ def analyze_message(text: str) -> MessageAnalysisResult:
         "Promises of prizes, free money, or rewards are classic social engineering. "
         "If it sounds too good to be true, it almost certainly is.")
     evidence.extend(fin)
-    score += min(len(fin) * 12, 30)
+    score += min(len(fin) * 15, 45)
 
     # ── 3. Credential harvesting ────────────────────────────────────────────
     cred = _find_patterns(text, CREDENTIAL_HARVEST_PATTERNS, "Credential Harvesting", "critical",
@@ -208,7 +211,7 @@ def analyze_message(text: str) -> MessageAnalysisResult:
         "Fake employment and task scams promise high daily returns for simple tasks or require upfront fees. "
         "Legitimate employers never hire through anonymous Telegram channels or demand payment to work.")
     evidence.extend(jobs)
-    score += min(len(jobs) * 14, 35)
+    score += min(len(jobs) * 18, 55)
 
     # ── 7c. Crypto & Investment scam signals ────────────────────────────────
     crypto = _find_patterns(text, CRYPTO_INVESTMENT_PATTERNS, "Crypto / Investment Fraud", "critical",
@@ -216,6 +219,29 @@ def analyze_message(text: str) -> MessageAnalysisResult:
         "Never share secret phrases or private keys with anyone.")
     evidence.extend(crypto)
     score += min(len(crypto) * 16, 40)
+
+    # ── 7d. Synergy heuristics (Multi-factor scam combinations) ────────────
+    # Secrecy demand + Financial bait (Classic advance fee / lottery fraud)
+    has_secrecy = any("secrecy" in e.signal.lower() for e in informal)
+    if has_secrecy and fin:
+        score += 20
+        evidence.append(MessageEvidence(
+            category="Social Engineering",
+            signal="Prize lure combined with secrecy demand",
+            severity="critical",
+            explanation="Demanding confidentiality or secrecy while offering a lottery, prize, or reward is a classic mark of advance-fee fraud.",
+        ))
+
+    # Job scam with Telegram diversion
+    has_telegram = any("telegram" in e.signal.lower() for e in jobs)
+    if has_telegram and len(jobs) >= 2:
+        score += 15
+        evidence.append(MessageEvidence(
+            category="Job / Task Scam",
+            signal="High-yield job redirecting to encrypted messaging",
+            severity="critical",
+            explanation="Redirecting job candidates to anonymous Telegram recruiters while promising high daily pay is standard operating procedure for task scam rings.",
+        ))
 
     # ── 8. Extract URLs ──────────────────────────────────────────────────────
     extracted_urls = _extract_urls(text)
