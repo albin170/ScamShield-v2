@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Cyan Neon Gradients -->
+    <linearGradient id="shieldBorderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="35%" stop-color="#00f0ff" />
+      <stop offset="70%" stop-color="#0284c7" />
+      <stop offset="100%" stop-color="#00f6ff" />
+    </linearGradient>
+
+    <linearGradient id="shieldInnerGlow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#00f0ff" stop-opacity="0.35" />
+      <stop offset="50%" stop-color="#0369a1" stop-opacity="0.2" />
+      <stop offset="100%" stop-color="#082f49" stop-opacity="0.6" />
+    </linearGradient>
+
+    <linearGradient id="checkGlow" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00e5ff" />
+      <stop offset="50%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#e0f2fe" />
+    </linearGradient>
+
+    <linearGradient id="sMonogramGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a5f3fc" />
+      <stop offset="40%" stop-color="#00f0ff" />
+      <stop offset="100%" stop-color="#0284c7" />
+    </linearGradient>
+
+    <!-- Holographic grid pattern -->
+    <pattern id="cyberGrid" width="16" height="16" patternUnits="userSpaceOnUse">
+      <path d="M 16 0 L 0 0 0 16" fill="none" stroke="#00f0ff" stroke-width="0.75" stroke-opacity="0.25" />
+      <circle cx="8" cy="8" r="0.8" fill="#38bdf8" fill-opacity="0.4" />
+    </pattern>
+
+    <!-- Glow filters -->
+    <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <filter id="intenseGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="12" result="blur1" />
+      <feGaussianBlur stdDeviation="4" result="blur2" />
+      <feMerge>
+        <feMergeNode in="blur1" />
+        <feMergeNode in="blur2" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background Shield Body Fill -->
+  <path d="M 256 36 L 436 88 L 418 270 C 414 346 348 420 256 476 C 164 420 98 346 94 270 L 76 88 Z"
+        fill="url(#shieldInnerGlow)" />
+
+  <!-- Cyber Holographic Grid Texture inside Shield -->
+  <path d="M 256 46 L 424 94 L 408 266 C 404 336 342 406 256 458 C 170 406 108 336 104 266 L 88 94 Z"
+        fill="url(#cyberGrid)" />
+
+  <!-- Outer Facet Bevel 3D Lines -->
+  <!-- Outer Rim Stroke -->
+  <path d="M 256 36 L 436 88 L 418 270 C 414 346 348 420 256 476 C 164 420 98 346 94 270 L 76 88 Z"
+        fill="none" stroke="url(#shieldBorderGrad)" stroke-width="12" stroke-linejoin="round"
+        filter="url(#neonGlow)" />
+
+  <!-- Inner Bevel Rim Stroke -->
+  <path d="M 256 62 L 410 106 L 396 260 C 392 324 336 390 256 440 C 176 390 120 324 116 260 L 102 106 Z"
+        fill="none" stroke="#00f0ff" stroke-width="4" stroke-opacity="0.85" stroke-linejoin="round" />
+
+  <!-- 3D Bevel Corner Ribs -->
+  <line x1="256" y1="36" x2="256" y2="62" stroke="#a5f3fc" stroke-width="4" />
+  <line x1="436" y1="88" x2="410" y2="106" stroke="#a5f3fc" stroke-width="4" />
+  <line x1="418" y1="270" x2="396" y2="260" stroke="#00f0ff" stroke-width="3" />
+  <line x1="256" y1="476" x2="256" y2="440" stroke="#0284c7" stroke-width="4" />
+  <line x1="94" y1="270" x2="116" y2="260" stroke="#00f0ff" stroke-width="3" />
+  <line x1="76" y1="88" x2="102" y2="106" stroke="#a5f3fc" stroke-width="4" />
+
+  <!-- Center 'S' Monogram & Integrated Checkmark Symbol -->
+  <!-- The Stylized 'S' Ribbon -->
+  <path d="M 334 162 C 320 142 292 132 256 132 C 204 132 170 156 170 196 C 170 234 198 252 248 268 L 272 276 C 314 290 336 308 336 342 C 336 388 296 414 246 414 C 200 414 164 390 148 358"
+        fill="none" stroke="url(#sMonogramGrad)" stroke-width="26" stroke-linecap="round" stroke-linejoin="round"
+        filter="url(#neonGlow)" />
+
+  <!-- Inner Dynamic Neon Checkmark (representing verified threat detection & protection) -->
+  <path d="M 214 238 L 260 286 L 392 142"
+        fill="none" stroke="url(#checkGlow)" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"
+        filter="url(#intenseGlow)" />
+
+  <!-- Highlight core on the checkmark -->
+  <path d="M 214 238 L 260 286 L 392 142"
+        fill="none" stroke="#ffffff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" />
+
+  <!-- High-tech spark/circuit nodes -->
+  <circle cx="392" cy="142" r="7" fill="#ffffff" filter="url(#intenseGlow)" />
+  <circle cx="256" cy="48" r="4" fill="#a5f3fc" />
+  <circle cx="426" cy="94" r="4" fill="#a5f3fc" />
+  <circle cx="86" cy="94" r="4" fill="#a5f3fc" />
+</svg>
