@@ -86,10 +86,11 @@ export default function FilePage() {
           <FileText size={28} style={{ color: '#f59e0b' }} />
         </div>
         <h1 style={{ fontSize: 'clamp(1.5rem, 3.5vw, 2rem)', fontWeight: 900, marginBottom: 8 }}>
-          <span className="shimmer-text">What's Inside That File?</span>
+          <span className="shimmer-text">File Analysis</span>
         </h1>
         <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.92rem', maxWidth: 540, margin: '0 auto' }}>
-          Got a suspicious attachment? Drop it here — we’ll dissect it and tell you if it’s dangerous, without ever running it.
+          Upload a suspicious attachment for static metadata analysis. Files are analysed by content type,
+          SHA-256 hash, and structural indicators — never executed.
         </p>
       </div>
 
@@ -228,8 +229,8 @@ export default function FilePage() {
               { label: 'Detected Type', value: result.detected_type },
               { label: 'Extension', value: result.claimed_extension || 'none' },
               { label: 'Size', value: result.file_size_bytes != null ? `${(result.file_size_bytes / 1024).toFixed(1)} KB` : '—' },
-              { label: 'Type Mismatch', value: result.type_mismatch ? 'FLAGGED' : 'Clean', alert: result.type_mismatch },
-              { label: 'Macros Detected', value: result.macro_detected ? 'DETECTED' : 'None', alert: result.macro_detected },
+              { label: 'Type Mismatch', value: result.type_mismatch ? '⚠️ YES' : '✓ No', alert: result.type_mismatch },
+              { label: 'Macros Detected', value: result.macro_detected ? '⚠️ YES' : '✓ No', alert: result.macro_detected },
             ].map(({ label, value, alert: isAlert }) => (
               <div key={label} style={{ background: 'rgba(0,0,0,0.25)', borderRadius: 8, padding: '8px 12px' }}>
                 <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.35)', marginBottom: 3, textTransform: 'uppercase' }}>{label}</div>

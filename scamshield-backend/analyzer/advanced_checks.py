@@ -33,7 +33,7 @@ def levenshtein(a: str, b: str) -> int:
 # Well-known brand domain roots to compare against
 BRAND_DOMAINS = [
     "paypal", "amazon", "netflix", "apple", "google", "microsoft", "facebook",
-    "instagram", "snapchat", "whatsapp", "twitter", "ebay", "walmart", "chase", "bankofamerica",
+    "instagram", "whatsapp", "twitter", "ebay", "walmart", "chase", "bankofamerica",
     "wellsfargo", "citibank", "hsbc", "linkedin", "dropbox", "zoom", "youtube",
     "spotify", "tiktok", "binance", "coinbase", "metamask", "paytm", "phonepe",
     "sbi", "hdfc", "icici", "axis", "airtel", "jiomart", "flipkart", "myntra",
@@ -48,19 +48,11 @@ HOMOGRAPH_MAP = {
     '@': 'a', '$': 's',
 }
 
-# Generic third-party URL shorteners (hiding destination)
-GENERIC_SHORTENERS = {
-    "bit.ly", "tinyurl.com", "ow.ly", "short.link",
+SHORTENED_DOMAINS = {
+    "bit.ly", "tinyurl.com", "t.co", "goo.gl", "ow.ly", "short.link",
     "rb.gy", "cutt.ly", "is.gd", "tiny.cc", "buff.ly", "adf.ly",
-    "bc.vc", "forms.gle",
+    "bc.vc", "lnkd.in", "youtu.be", "forms.gle",
 }
-
-# Official brand shorteners
-OFFICIAL_SHORTENERS = {
-    "youtu.be", "ig.me", "wa.me", "fb.me", "m.me", "t.co", "amzn.to", "spoti.fi", "t.me", "discord.gg", "git.io", "lnkd.in"
-}
-
-SHORTENED_DOMAINS = GENERIC_SHORTENERS.union(OFFICIAL_SHORTENERS)
 
 # Suspicious patterns in fresh/throwaway domains
 FRESH_DOMAIN_SIGNALS = [
@@ -79,20 +71,13 @@ class AdvancedSignal:
     detail: str = ""
 
 
-def check_typosquatting(domain_label: str, hostname: str = "") -> list[AdvancedSignal]:
+def check_typosquatting(domain_label: str) -> list[AdvancedSignal]:
     """
     Compare the SLD (second-level domain) against known brand names.
-    Flag if edit-distance <= 2 but not an exact match.
-    Excludes verified official domains and brand shorteners (e.g. youtu.be).
+    Flag if edit-distance ≤ 2 but not an exact match.
     """
     signals = []
-    label = domain_label.lower().strip()
-    host = hostname.lower().strip()
-
-    # Never flag official brand shorteners or sub-labels
-    if host in OFFICIAL_SHORTENERS or label in {"youtu", "snap", "ig", "fb", "wa"}:
-        return []
-
+    label = domain_label.lower()
     for brand in BRAND_DOMAINS:
         if label == brand:
             continue  # Exact match — not typosquatting (handled by whitelist)
@@ -106,9 +91,9 @@ def check_typosquatting(domain_label: str, hostname: str = "") -> list[AdvancedS
                     f"This is a classic typosquatting technique where attackers register "
                     f"misspelled versions of trusted brands to trap users who mistype URLs."
                 ),
-                detail=f"'{label}' -> '{brand}' (distance=1)",
+                detail=f"'{label}' → '{brand}' (distance=1)",
             ))
-        elif dist == 2 and len(label) >= 5 and label not in ("youtube", "whatsapp", "google"):
+        elif dist == 2 and len(label) >= 5:
             signals.append(AdvancedSignal(
                 check="Possible typosquatting (2-char edit)",
                 severity="high",
@@ -116,7 +101,7 @@ def check_typosquatting(domain_label: str, hostname: str = "") -> list[AdvancedS
                     f"The domain '{label}' closely resembles '{brand}' (2-character difference). "
                     f"Verify you have the correct domain before entering any credentials."
                 ),
-                detail=f"'{label}' -> '{brand}' (distance=2)",
+                detail=f"'{label}' → '{brand}' (distance=2)",
             ))
     return signals
 
@@ -208,25 +193,15 @@ def check_homograph(hostname: str) -> list[AdvancedSignal]:
 
 
 def check_url_shortener(root_domain: str) -> list[AdvancedSignal]:
-    """
-    Check URL shortener domains.
-    Differentiates between verified official brand shorteners (e.g. youtu.be, ig.me)
-    and generic third-party shorteners (e.g. bit.ly, tinyurl.com).
-    """
-    dom = root_domain.lower().strip()
-    if dom in OFFICIAL_SHORTENERS:
+    """Flag known URL shortener domains."""
+    if root_domain.lower() in SHORTENED_DOMAINS:
         return [AdvancedSignal(
-            check=f"Official short-link domain: {dom}",
-            severity="safe",
-            explanation=f"'{dom}' is an official short-link domain operated by a verified service.",
-        )]
-    if dom in GENERIC_SHORTENERS:
-        return [AdvancedSignal(
-            check=f"URL shortener: {dom}",
+            check=f"URL shortener: {root_domain}",
             severity="medium",
             explanation=(
-                f"'{dom}' is a generic third-party URL shortener. Shortened links obscure the final destination. "
-                "Be cautious before following."
+                f"'{root_domain}' is a URL-shortening service. Shortened links hide the real "
+                "destination. Expand the URL using a preview service (e.g., checkshorturl.com) "
+                "before clicking. Scammers frequently use shorteners to evade detection."
             ),
         )]
     return []

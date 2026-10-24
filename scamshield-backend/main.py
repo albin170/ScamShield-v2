@@ -1,15 +1,15 @@
 """
-ScamShield FastAPI Backend — v3.0
+ScamShield FastAPI Backend — v2.0
 Evidence-based scam, phishing, and fraud detection.
 
-New in v3:
-  - Super admin + admin authentication (JWT, HttpOnly cookies)
-  - Role-based access control (superadmin / admin / user / guest)
-  - Admin panel API: user management, audit log, session control
-  - Theme management via database
-  - Notifications system
-  - Rate limiting on auth endpoints
-  - Secure super admin bootstrap via environment variable
+New in v2:
+  - Email forensics endpoint (/analyze/email)
+  - QR code analysis endpoint (/analyze/qr)
+  - File attachment metadata endpoint (/analyze/file)
+  - System health + readiness endpoints
+  - Improved CORS configuration (configurable via env)
+  - Request size limits
+  - Structured error responses
 """
 import json
 import os
@@ -19,27 +19,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-# Load .env before anything else
-try:
-    from dotenv import load_dotenv
-    load_dotenv(Path(__file__).parent / ".env")
-except ImportError:
-    pass  # python-dotenv optional
-
 from fastapi import FastAPI, HTTPException, APIRouter, File, Form, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
-
-try:
-    from slowapi import Limiter, _rate_limit_exceeded_handler
-    from slowapi.util import get_remote_address
-    from slowapi.errors import RateLimitExceeded
-    limiter = Limiter(key_func=get_remote_address)
-    RATE_LIMIT_ENABLED = True
-except ImportError:
-    limiter = None
-    RATE_LIMIT_ENABLED = False
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
@@ -49,22 +32,14 @@ from analyzer.message_analyzer import analyze_message, MessageAnalysisResult, Me
 from analyzer.email_analyzer import analyze_email, EmailAnalysisResult, EmailEvidence
 from analyzer.qr_analyzer import analyze_qr, QRAnalysisResult
 from analyzer.file_analyzer import analyze_file, FileAnalysisResult, FileEvidence
-from analyzer.threat_intel import threat_intel_manager
-from analyzer.benchmark_data import evaluate_dataset, BENCHMARK_DATASET
-from database import init_db, bootstrap_superadmin, get_db as get_auth_db
-from admin_routes import auth_router, admin_router, superadmin_router, public_settings_router
 
 # ---------------------------------------------------------------------------
 # Configuration (from environment variables)
 # ---------------------------------------------------------------------------
-ALLOWED_ORIGINS = [
-    orig.strip()
-    for orig in os.getenv(
-        "CORS_ORIGINS",
-        "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://localhost:3000"
-    ).split(",")
-    if orig.strip() and orig.strip() != "*"
-]
+ALLOWED_ORIGINS = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173"
+).split(",")
 
 MAX_UPLOAD_SIZE = int(os.getenv("MAX_UPLOAD_SIZE_MB", "25")) * 1024 * 1024  # bytes
 
@@ -75,34 +50,26 @@ app = FastAPI(
     title="ScamShield API",
     description=(
         "Evidence-based scam, phishing, and cybersecurity threat detection. "
-        "Supports URL, SMS/message, email header, QR code, file metadata analysis, "
-        "plus admin management, RBAC, and theme configuration."
+        "Supports URL, SMS/message, email header, QR code, and file metadata analysis."
     ),
-    version="3.0.0",
+    version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
 )
 
-# Rate limiting
-if RATE_LIMIT_ENABLED and limiter:
-    app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-# CORS (Supports localhost, Vercel deployments, and Render subdomains with credentials)
+# In production, replace with specific origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|.*\.vercel\.app|.*\.onrender\.com|.*\.netlify\.app)(:\d+)?$",
-    allow_methods=["GET", "POST", "DELETE", "PATCH", "OPTIONS"],
+    allow_origins=ALLOWED_ORIGINS + ["*"],   # "*" kept for Render/Vercel dev; remove in prod
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-Request-ID"],
-    allow_credentials=True,
     expose_headers=["X-Request-ID"],
     max_age=3600,
 )
 
 
 # ---------------------------------------------------------------------------
-# SQLite history store (delegated to database.py)
+# SQLite history store
 # ---------------------------------------------------------------------------
 DB_PATH = Path(__file__).parent / "scamshield.db"
 
@@ -113,11 +80,24 @@ def get_db():
     return conn
 
 
-# Initialize all tables (including new auth tables)
-init_db()
+def init_db():
+    with get_db() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS scan_history (
+                id TEXT PRIMARY KEY,
+                scan_type TEXT NOT NULL,
+                input_preview TEXT NOT NULL,
+                risk_level TEXT NOT NULL,
+                risk_score INTEGER NOT NULL,
+                summary TEXT NOT NULL,
+                full_result TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
+        conn.commit()
 
-# Bootstrap super admin from env vars (safe — skips if already exists)
-bootstrap_superadmin()
+
+init_db()
 
 
 # ---------------------------------------------------------------------------
@@ -184,15 +164,6 @@ class ScanResult(BaseModel):
     next_steps: list[str]
     limitations: list[str]
     created_at: str
-    # Explainable Scoring & Four Clear Verdicts
-    verdict: Optional[str] = None
-    confidence: Optional[str] = None
-    normalized_url: Optional[str] = None
-    positive_evidence: Optional[list[EvidenceOut]] = None
-    negative_evidence: Optional[list[EvidenceOut]] = None
-    sources_consulted: Optional[list[str]] = None
-    checks_completed: Optional[list[str]] = None
-    checks_unavailable: Optional[list[str]] = None
     # URL-specific
     url: Optional[str] = None
     domain: Optional[str] = None
@@ -344,16 +315,8 @@ def analyze_url_endpoint(req: URLRequest):
         scan_type="url",
         risk_level=raw.risk_level,
         risk_score=raw.risk_score,
-        verdict=getattr(raw, "verdict", "NO KNOWN THREAT FOUND"),
-        confidence=getattr(raw, "confidence", "medium"),
-        normalized_url=getattr(raw, "normalized_url", raw.url),
         summary=raw.summary,
         evidence=[_ev(e) for e in raw.evidence],
-        positive_evidence=[_ev(e) for e in getattr(raw, "positive_evidence", [])],
-        negative_evidence=[_ev(e) for e in getattr(raw, "negative_evidence", [])],
-        sources_consulted=getattr(raw, "sources_consulted", []),
-        checks_completed=getattr(raw, "checks_completed", []),
-        checks_unavailable=getattr(raw, "checks_unavailable", []),
         next_steps=raw.next_steps,
         limitations=raw.limitations,
         created_at=now_iso(),
@@ -438,109 +401,104 @@ async def analyze_qr_endpoint(file: UploadFile = File(...)):
 
     qr_raw = analyze_qr(image_bytes, file.filename or "upload")
 
-    nested_verdict = qr_raw.verdict
-    nested_risk_level = qr_raw.risk_level
-    nested_risk_score = qr_raw.risk_score
-    nested_confidence = qr_raw.confidence
-    nested_summary = qr_raw.summary
-    nested_evidence = [_ev(e) for e in qr_raw.evidence]
-    nested_pos = []
-    nested_neg = []
-    nested_next_steps = qr_raw.next_steps
-    nested_limitations = qr_raw.limitations
-    nested_sources = ["QR Image Decoder (pyzbar)"]
-    nested_completed = ["QR Matrix Decoding", f"Payload Classification ({qr_raw.qr_type})"]
-    nested_unavailable = []
+    # If decoded a URL, run URL analysis
+    nested_risk_level = "medium"
+    nested_risk_score = 40
+    nested_summary = "QR code decoded but nested analysis was not performed."
+    nested_evidence = []
+    nested_next_steps = ["Inspect the decoded URL carefully before visiting."]
+    nested_limitations = ["QR decoding was successful but the destination URL was not further analysed."]
     nested_extracted_urls = []
 
     if qr_raw.decoded_text and qr_raw.decode_available:
         if qr_raw.qr_type == "url":
             url_raw = analyze_url(qr_raw.decoded_text)
-            nested_verdict = url_raw.verdict
             nested_risk_level = url_raw.risk_level
             nested_risk_score = url_raw.risk_score
-            nested_confidence = url_raw.confidence
-            nested_summary = f"Decoded QR URL: {qr_raw.decoded_text[:100]}. {url_raw.summary}"
-            nested_evidence = [_ev(e) for e in qr_raw.evidence] + [_ev(e) for e in url_raw.evidence]
-            nested_pos = [_ev(e) for e in url_raw.positive_evidence]
-            nested_neg = [_ev(e) for e in url_raw.negative_evidence]
+            nested_summary = f"QR decoded to URL: {qr_raw.decoded_text[:100]}. {url_raw.summary}"
+            nested_evidence = [_ev(e) for e in url_raw.evidence]
             nested_next_steps = url_raw.next_steps
-            nested_limitations = qr_raw.limitations + url_raw.limitations
-            nested_sources += url_raw.sources_consulted
-            nested_completed += url_raw.checks_completed
-            nested_unavailable += url_raw.checks_unavailable
-            nested_extracted_urls = [qr_raw.decoded_text]
-        elif qr_raw.qr_type == "deep_link":
-            nested_verdict = qr_raw.verdict
-            nested_risk_level = qr_raw.risk_level
-            nested_risk_score = qr_raw.risk_score
-            nested_confidence = qr_raw.confidence
-            nested_summary = qr_raw.summary
-            nested_evidence = [_ev(e) for e in qr_raw.evidence]
-            nested_pos = [_ev(e) for e in qr_raw.evidence if e.severity in ("safe", "info")]
-            nested_next_steps = qr_raw.next_steps
-        elif qr_raw.qr_type in ("wifi", "vcard", "upi_payment", "phone", "email", "sms"):
-            nested_verdict = qr_raw.verdict
-            nested_risk_level = qr_raw.risk_level
-            nested_risk_score = qr_raw.risk_score
-            nested_confidence = qr_raw.confidence
-            nested_summary = qr_raw.summary
-            nested_evidence = [_ev(e) for e in qr_raw.evidence]
-            nested_neg = [_ev(e) for e in qr_raw.evidence if e.severity in ("critical", "high", "medium")]
-            nested_pos = [_ev(e) for e in qr_raw.evidence if e.severity in ("safe", "info")]
-            nested_next_steps = qr_raw.next_steps
-        elif qr_raw.qr_type == "text":
+            nested_limitations = url_raw.limitations
+        elif qr_raw.qr_type in ("text",):
             msg_raw = analyze_message(qr_raw.decoded_text)
-            nested_verdict = "MALICIOUS" if msg_raw.risk_level in ("critical", "high") else "SUSPICIOUS" if msg_raw.risk_level == "medium" else "NO KNOWN THREAT FOUND"
             nested_risk_level = msg_raw.risk_level
             nested_risk_score = msg_raw.risk_score
-            nested_summary = f"QR decoded to text: {msg_raw.summary}"
-            nested_evidence = [_ev(e) for e in qr_raw.evidence] + [_ev(e) for e in msg_raw.evidence]
+            nested_summary = f"QR decoded to text. {msg_raw.summary}"
+            nested_evidence = [_ev(e) for e in msg_raw.evidence]
             nested_next_steps = msg_raw.next_steps
-            nested_limitations = qr_raw.limitations + msg_raw.limitations
+            nested_limitations = msg_raw.limitations
             nested_extracted_urls = msg_raw.extracted_urls
-    else:
-        # Decode failed or library unavailable
-        nested_verdict = "UNKNOWN / UNABLE TO VERIFY"
-        nested_risk_level = "low"
-        nested_risk_score = 10
-        nested_confidence = "low"
-        nested_summary = qr_raw.error or "QR decode failed: no QR code found in the image."
+        elif qr_raw.qr_type == "upi_payment":
+            nested_risk_level = "medium"
+            nested_risk_score = 40
+            nested_summary = f"QR code encodes a UPI payment link: {qr_raw.decoded_text[:100]}. Verify the payee details carefully before completing any payment."
+            nested_evidence = [EvidenceOut(
+                signal="UPI Payment QR Code",
+                severity="medium",
+                explanation="This QR code links to a UPI payment. Scammers frequently send QR codes that pre-fill payment amounts to unauthorised accounts. Always verify the recipient's VPA (UPI ID) matches the expected payee.",
+                category="Payment Risk",
+            )]
+            nested_next_steps = [
+                "Verify the payee's name and UPI ID before confirming.",
+                "Never scan QR codes received from unknown sources to make payments.",
+                "If the QR pre-fills a payment amount, treat it with extra suspicion.",
+            ]
+            nested_limitations = ["UPI QR analysis is heuristic only — ScamShield cannot verify the payee identity."]
+        elif qr_raw.qr_type == "phone":
+            nested_risk_level = "low"
+            nested_risk_score = 15
+            nested_summary = f"QR code encodes a phone number: {qr_raw.decoded_text}. Verify this number through official channels before calling."
+            nested_evidence = [EvidenceOut(
+                signal="Phone number QR Code",
+                severity="low",
+                explanation="This QR code encodes a phone number. Verify it matches the organisation's official contact before calling.",
+                category="Contact Risk",
+            )]
+            nested_next_steps = ["Verify the phone number through the organisation's official website."]
+            nested_limitations = ["Phone number authenticity cannot be verified statically."]
+
+        if not qr_raw.decode_available:
+            nested_risk_level = "medium"
+            nested_risk_score = 30
+            nested_summary = "QR decoding library is not available on the server. Install Pillow and pyzbar to enable QR analysis."
+            nested_evidence = [EvidenceOut(
+                signal="QR decode unavailable",
+                severity="medium",
+                explanation=qr_raw.error or "QR decoding dependencies are not installed.",
+                category="System",
+            )]
+
+    if qr_raw.error and not qr_raw.decoded_text:
+        nested_risk_level = "medium"
+        nested_risk_score = 30
+        nested_summary = f"QR decode failed: {qr_raw.error}"
         nested_evidence = [EvidenceOut(
-            signal="QR decode unverified",
-            severity="low",
-            explanation=qr_raw.error or "No QR pattern detected in the image.",
-            category="Scanner",
+            signal="QR decode failed",
+            severity="medium",
+            explanation=qr_raw.error,
+            category="Error",
         )]
-        nested_unavailable = ["QR Decode Engine (unreadable or missing QR pattern)"]
 
     result = ScanResult(
         id=str(uuid.uuid4()),
         scan_type="qr",
         risk_level=nested_risk_level,
         risk_score=nested_risk_score,
-        verdict=nested_verdict,
-        confidence=nested_confidence,
         summary=nested_summary,
         evidence=nested_evidence,
-        positive_evidence=nested_pos,
-        negative_evidence=nested_neg,
-        sources_consulted=nested_sources,
-        checks_completed=nested_completed,
-        checks_unavailable=nested_unavailable,
         next_steps=nested_next_steps,
         limitations=nested_limitations + [
-            "ScamShield does NOT automatically navigate to or execute decoded content.",
-            "QR analysis relies on static image inspection.",
+            "ScamShield does NOT navigate to the decoded URL — the destination was not fetched.",
+            "QR code analysis relies on the pyzbar library for decoding."
         ],
         created_at=now_iso(),
         decoded_text=qr_raw.decoded_text,
         qr_type=qr_raw.qr_type,
         file_sha256=qr_raw.file_sha256,
         decode_available=qr_raw.decode_available,
-        extracted_urls=nested_extracted_urls,
+        extracted_urls=[qr_raw.decoded_text] if qr_raw.qr_type == "url" and qr_raw.decoded_text else nested_extracted_urls,
     )
-    save_scan("qr", qr_raw.decoded_text or "(qr decode unverified)", result)
+    save_scan("qr", qr_raw.decoded_text or "(qr decode failed)", result)
     return result
 
 
@@ -622,16 +580,14 @@ def clear_history():
 @router.get("/stats")
 def get_stats():
     with get_db() as conn:
-        total = conn.execute("SELECT COUNT(*) FROM scan_history").fetchone()[0] or 0
-        critical = conn.execute("SELECT COUNT(*) FROM scan_history WHERE risk_level='critical'").fetchone()[0] or 0
-        high = conn.execute("SELECT COUNT(*) FROM scan_history WHERE risk_level='high'").fetchone()[0] or 0
-        medium = conn.execute("SELECT COUNT(*) FROM scan_history WHERE risk_level='medium'").fetchone()[0] or 0
-        low = conn.execute("SELECT COUNT(*) FROM scan_history WHERE risk_level='low'").fetchone()[0] or 0
-        safe = conn.execute("SELECT COUNT(*) FROM scan_history WHERE risk_level='safe'").fetchone()[0] or 0
+        total = conn.execute("SELECT COUNT(*) FROM scan_history").fetchone()[0]
+        critical = conn.execute("SELECT COUNT(*) FROM scan_history WHERE risk_level='critical'").fetchone()[0]
+        high = conn.execute("SELECT COUNT(*) FROM scan_history WHERE risk_level='high'").fetchone()[0]
+        medium = conn.execute("SELECT COUNT(*) FROM scan_history WHERE risk_level='medium'").fetchone()[0]
+        low = conn.execute("SELECT COUNT(*) FROM scan_history WHERE risk_level='low'").fetchone()[0]
+        safe = conn.execute("SELECT COUNT(*) FROM scan_history WHERE risk_level='safe'").fetchone()[0]
         avg_row = conn.execute("SELECT AVG(risk_score) FROM scan_history").fetchone()[0]
-        avg_score = round(avg_row or 0, 1) if avg_row is not None else 0.0
-
-        unique_urls = conn.execute("SELECT COUNT(DISTINCT input_preview) FROM scan_history WHERE scan_type='url'").fetchone()[0] or 0
+        avg_score = round(avg_row or 0, 1)
 
         by_type_rows = conn.execute(
             "SELECT scan_type, COUNT(*) as cnt FROM scan_history GROUP BY scan_type"
@@ -643,13 +599,6 @@ def get_stats():
             "FROM scan_history WHERE risk_level='critical' ORDER BY created_at DESC LIMIT 5"
         ).fetchall()
 
-        recent_all = conn.execute(
-            "SELECT id, scan_type, input_preview, risk_level, risk_score, summary, created_at "
-            "FROM scan_history ORDER BY created_at DESC LIMIT 5"
-        ).fetchall()
-
-    eval_summary = evaluate_dataset()
-
     return {
         "total_scans": total,
         "critical_count": critical,
@@ -657,37 +606,10 @@ def get_stats():
         "medium_count": medium,
         "low_count": low,
         "safe_count": safe,
-        "malicious_count": critical + high,
-        "suspicious_count": medium,
-        "no_known_threat_count": low + safe,
-        "unique_urls_analyzed": unique_urls,
-        "url_scans_count": by_type.get("url", 0),
-        "qr_scans_count": by_type.get("qr", 0),
-        "email_scans_count": by_type.get("email", 0),
-        "file_scans_count": by_type.get("file", 0),
-        "message_scans_count": by_type.get("message", 0),
         "average_risk_score": avg_score,
         "by_scan_type": by_type,
         "recent_critical": [dict(r) for r in recent_critical],
-        "recent_scans": [dict(r) for r in recent_all],
-        "threat_intel_providers": threat_intel_manager.get_provider_statuses(),
-        "benchmark_evaluation": {
-            "dataset_size": eval_summary["dataset_size"],
-            "accuracy_pct": eval_summary["accuracy_pct"],
-            "precision_pct": eval_summary["precision_pct"],
-            "recall_pct": eval_summary["recall_pct"],
-            "f1_score_pct": eval_summary["f1_score_pct"],
-            "false_positives": eval_summary["false_positives"],
-            "false_negatives": eval_summary["false_negatives"],
-        },
-        "measurement_timestamp": now_iso(),
     }
-
-
-@router.get("/evaluation")
-def get_evaluation():
-    """Return full documented benchmark dataset evaluation with precision/recall and confusion matrix."""
-    return evaluate_dataset()
 
 
 # ── Demo / benchmark cases ─────────────────────────────────────────────────
@@ -803,22 +725,9 @@ def run_demo_case(case_id: str):
 # ---------------------------------------------------------------------------
 # Register routers
 # ---------------------------------------------------------------------------
-# Existing analysis routes
 app.include_router(router)
 app.include_router(router, prefix="/api")
 app.include_router(router, prefix="/api/v1")
-
-# Auth and admin routes
-app.include_router(auth_router)
-app.include_router(admin_router)
-app.include_router(superadmin_router)
-app.include_router(public_settings_router)
-
-# Also under /api prefix
-app.include_router(auth_router, prefix="/api")
-app.include_router(admin_router, prefix="/api")
-app.include_router(superadmin_router, prefix="/api")
-app.include_router(public_settings_router, prefix="/api")
 
 
 if __name__ == "__main__":

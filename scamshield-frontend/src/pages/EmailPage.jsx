@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { analyzeEmail } from '../api'
 import ResultPanel from '../components/ResultPanel'
-import { Mail, X, AlertTriangle, Scan, ChevronDown, ChevronUp, Info, ShieldAlert, CheckCircle2 } from 'lucide-react'
+import { Mail, X, AlertTriangle, Scan, ChevronDown, ChevronUp, Info } from 'lucide-react'
 
 const SAMPLE_PHISHING = {
   subject: 'URGENT: Your PayPal account has been limited',
@@ -128,10 +128,10 @@ export default function EmailPage() {
           <Mail size={28} style={{ color: '#a855f7' }} />
         </div>
         <h1 style={{ fontSize: 'clamp(1.5rem, 3.5vw, 2rem)', fontWeight: 900, marginBottom: 8 }}>
-          <span className="shimmer-text">Suspicious Email?</span>
+          <span className="shimmer-text">Email Forensics</span>
         </h1>
         <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.92rem', maxWidth: 520, margin: '0 auto' }}>
-          Got a fishy email? Paste the headers and body here — we'll expose spoofing, phishing traps, and fake sender tricks.
+          Paste email headers and body to detect phishing, spoofing, SPF/DKIM/DMARC failures, and credential harvesting.
         </p>
       </div>
 
@@ -159,7 +159,7 @@ export default function EmailPage() {
               Subject
             </label>
             <input
-              className="input-field horror-input"
+              className="input-field"
               placeholder="Email subject line"
               value={form.subject}
               onChange={e => setField('subject', e.target.value)}
@@ -170,7 +170,7 @@ export default function EmailPage() {
               From Address
             </label>
             <input
-              className="input-field mono horror-input"
+              className="input-field mono"
               placeholder="sender@example.com"
               value={form.from_addr}
               onChange={e => setField('from_addr', e.target.value)}
@@ -183,7 +183,7 @@ export default function EmailPage() {
             Reply-To (optional)
           </label>
           <input
-            className="input-field mono horror-input"
+            className="input-field mono"
             placeholder="reply-to@differentdomain.com"
             value={form.reply_to}
             onChange={e => setField('reply_to', e.target.value)}
@@ -207,7 +207,7 @@ export default function EmailPage() {
         {showHeaders && (
           <div style={{ marginBottom: 14 }}>
             <textarea
-              className="input-field mono horror-input"
+              className="input-field mono"
               rows={7}
               placeholder="Paste raw email headers here (From, Authentication-Results, Received, etc.)"
               value={form.raw_headers}
@@ -240,11 +240,11 @@ export default function EmailPage() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.35)', alignSelf: 'center' }}>Try:</span>
-            <button className="btn-ghost" onClick={() => loadSample('phishing')} style={{ fontSize: '0.78rem', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 6, color: '#ff2d55' }}>
-              <ShieldAlert size={13} style={{ color: '#ff2d55' }} /> Phishing Email
+            <button className="btn-ghost" onClick={() => loadSample('phishing')} style={{ fontSize: '0.78rem', padding: '6px 12px' }}>
+              🚨 Phishing Email
             </button>
-            <button className="btn-ghost" onClick={() => loadSample('legit')} style={{ fontSize: '0.78rem', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <CheckCircle2 size={13} style={{ color: '#10b981' }} /> Legitimate Email
+            <button className="btn-ghost" onClick={() => loadSample('legit')} style={{ fontSize: '0.78rem', padding: '6px 12px' }}>
+              ✓ Legitimate Email
             </button>
           </div>
           <button
